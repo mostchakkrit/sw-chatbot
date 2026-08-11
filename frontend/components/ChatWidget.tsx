@@ -13,11 +13,24 @@ interface ChatMessage {
 
 const CONVERSATION_ID_KEY = "chatbot-demo-conversation-id";
 
+function generateId(): string {
+  // crypto.randomUUID() requires a secure context (HTTPS or localhost) and is
+  // undefined on plain-HTTP deployments, so fall back to a non-crypto UUID.
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function getCustomerIdentifier(): string {
   const key = "chatbot-demo-customer-id";
   let id = window.localStorage.getItem(key);
   if (!id) {
-    id = crypto.randomUUID();
+    id = generateId();
     window.localStorage.setItem(key, id);
   }
   return id;
