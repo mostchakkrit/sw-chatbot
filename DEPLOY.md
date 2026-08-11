@@ -1,4 +1,4 @@
-# Deploying to AWS (single EC2 instance)
+# Deploying to AWS (single EC2 instance, Free Tier)
 
 The cheapest viable setup: one EC2 instance running Postgres (pgvector),
 the backend, and the frontend as three Docker containers via
@@ -7,6 +7,13 @@ auto-scaling — good for a demo or low-traffic MVP, not for production
 traffic or anything handling real customer data (see **Limitations** at
 the end).
 
+This version targets an AWS Free Tier instance (1 GB RAM). Check
+[aws.amazon.com/free](https://aws.amazon.com/free) for what your specific
+account actually qualifies for — free tier terms changed in 2024/2025
+(older accounts get 750 hrs/month of t2.micro/t3.micro for 12 months;
+newer accounts get a $200 credit for 6 months instead). Either way, the
+instance type below is the smallest AWS offers, so it applies regardless.
+
 Everything below was built and smoke-tested locally against the exact
 images this repo builds (migrations, admin login, FAQ seeding, and a real
 RAG chat round-trip through Groq all verified working end-to-end).
@@ -14,12 +21,16 @@ RAG chat round-trip through Groq all verified working end-to-end).
 ## 1. Launch the instance
 
 - AMI: **Ubuntu 22.04 LTS**
-- Instance type: **t3.small** (2 vCPU / 2 GB). The frontend build briefly
-  needs more headroom than 2 GB gives you alongside the running
-  containers — add a 2 GB swapfile (step 3) so the build doesn't get
-  OOM-killed. If you'd rather not bother with swap, use **t3.medium**
-  instead (~2x the cost).
-- Storage: default 20 GB gp3 is plenty.
+- Instance type: **t2.micro** or **t3.micro** (1 vCPU / 1 GB) — the free
+  tier size. This is genuinely tight: the Next.js build step alone can
+  use more than 1 GB. Add a 3 GB swapfile (step 3) so the build doesn't
+  get OOM-killed — it'll be slow (swapping to disk) but should finish.
+  If it still gets killed: stop the instance, resize it to **t3.small**
+  just for the build (EC2 → Actions → Instance settings → Change
+  instance type, while stopped), build, then resize back down to
+  t3.micro afterward. Resizing an EBS-backed instance is free, you're
+  only billed for the time spent running at the bigger size.
+- Storage: default 20 GB gp3 (free tier covers up to 30 GB).
 - Security group inbound rules:
   - `22` (SSH) — restrict to your IP
   - `80` (HTTP, frontend) — `0.0.0.0/0`
@@ -39,10 +50,13 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-## 3. (t3.small only) Add swap
+## 3. Add swap
+
+1 GB of real RAM isn't enough on its own for the frontend build — this
+is required, not optional, on a micro instance:
 
 ```bash
-sudo fallocate -l 2G /swapfile
+sudo fallocate -l 3G /swapfile
 sudo chmod 600 /swapfile
 sudo mkswap /swapfile
 sudo swapon /swapfile
@@ -74,6 +88,11 @@ In `.env`, set:
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 ```
+
+On a micro instance, expect the `build` step (specifically the frontend)
+to take several minutes and lean on swap — that's expected, not stuck.
+If it dies with `Killed` or the SSH session drops, that's the OOM killer;
+see the resize fallback in step 1.
 
 The backend's first boot loads the local embedding model
 (`Xenova/paraphrase-multilingual-MiniLM-L12-v2`); expect it to take
