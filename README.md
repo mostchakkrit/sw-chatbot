@@ -90,3 +90,8 @@ FAQs (`question` → `content` pairs, with an optional `category`) are managed
 at `/admin/faqs`. Each entry is re-embedded on save, so retrieval quality
 depends on writing FAQ questions the way a customer would actually phrase
 them.
+
+## Deploying
+
+See [DEPLOY.md](DEPLOY.md) for a single-EC2-instance Docker Compose setup
+(cheapest option, good for a demo).
