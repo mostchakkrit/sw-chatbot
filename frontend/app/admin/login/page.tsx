@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Headphones } from "lucide-react";
 import { adminLogin, AdminApiError, getAdminToken, setAdminToken } from "@/lib/adminApi";
 
 export default function AdminLoginPage() {
@@ -21,7 +22,7 @@ export default function AdminLoginPage() {
     setLoading(true);
     try {
       const res = await adminLogin(email, password);
-      setAdminToken(res.token);
+      setAdminToken(res.token, res.admin);
       router.push("/admin/dashboard");
     } catch (err) {
       setError(err instanceof AdminApiError ? err.message : "เข้าสู่ระบบไม่สำเร็จ");
@@ -38,7 +39,9 @@ export default function AdminLoginPage() {
         style={{ boxShadow: "var(--flip7-shadow-card)" }}
       >
         <div className="text-center">
-          <h1 className="text-2xl font-extrabold text-base-content">🎧 Admin Login</h1>
+          <h1 className="flex items-center justify-center gap-2 text-2xl font-extrabold text-base-content">
+            <Headphones size={22} className="text-primary" /> Admin Login
+          </h1>
           <p className="mt-1 text-sm text-base-content/60">SoundWave Pro Support Dashboard</p>
         </div>
 

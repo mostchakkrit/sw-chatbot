@@ -15,13 +15,13 @@
   --color-base-content: #1b3b39;
 
   --color-primary: #2ba8a2;
-  --color-primary-content: #ffffff;
+  --color-primary-content: #0f2422;
 
   --color-secondary: #ffd23f;
-  --color-secondary-content: #1e8c86;
+  --color-secondary-content: #0f2422;
 
   --color-accent: #ef6c4a;
-  --color-accent-content: #ffffff;
+  --color-accent-content: #0f2422;
 
   --color-neutral: #1e8c86;
   --color-neutral-content: #ffffff;
@@ -59,6 +59,10 @@
 }
 
 body {
-  background: var(--color-base-200);
+  background:
+    radial-gradient(48rem 36rem at 8% 6%, rgb(255 210 63 / 0.38), transparent 62%),
+    radial-gradient(42rem 36rem at 100% 2%, rgb(239 108 74 / 0.3), transparent 60%),
+    radial-gradient(58rem 48rem at 55% 105%, rgb(43 168 162 / 0.32), transparent 62%),
+    var(--color-base-200);
   color: var(--color-base-content);
 }

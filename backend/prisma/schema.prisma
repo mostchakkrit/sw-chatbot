@@ -9,20 +9,9 @@ datasource db {
   extensions = [vector]
 }
 
-model Product {
-  id          String   @id @default(uuid())
-  name        String
-  description String
-  price       Decimal  @db.Decimal(10, 2)
-  imageUrl    String   @map("image_url")
-  specs       Json?
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  @@map("products")
-}
-
 model KnowledgeBase {
   id        String                      @id @default(uuid())
+  question  String?
   content   String
   embedding Unsupported("vector(384)")?
   category  String?

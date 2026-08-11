@@ -1,6 +1,7 @@
-import { BadRequestException, Body, Controller, Post, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { ChatService, ESCALATION_MESSAGE } from './chat.service';
+import { ChatEventsService } from './chat-events.service';
 
 interface ChatRequestBody {
   conversationId?: string;
@@ -10,7 +11,42 @@ interface ChatRequestBody {
 
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly chatEvents: ChatEventsService,
+  ) {}
+
+  @Get(':conversationId/history')
+  async history(
+    @Param('conversationId') conversationId: string,
+    @Query('customerIdentifier') customerIdentifier: string,
+  ) {
+    if (!customerIdentifier) {
+      throw new BadRequestException('customerIdentifier is required');
+    }
+    const history = await this.chatService.getHistory(conversationId, customerIdentifier);
+    if (!history) throw new NotFoundException('conversation not found');
+    return history;
+  }
+
+  @Get(':conversationId/stream')
+  subscribe(@Param('conversationId') conversationId: string, @Req() req: Request, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const unsubscribe = this.chatEvents.subscribe(conversationId, (event) => {
+      res.write(`event: admin-message\ndata: ${JSON.stringify(event)}\n\n`);
+    });
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      res.end();
+    });
+  }
 
   @Post()
   async chat(@Body() body: ChatRequestBody, @Res() res: Response) {
@@ -41,10 +77,21 @@ export class ChatController {
 
       const history = await this.chatService.buildHistory(conversation.id);
       let fullText = '';
-      for await (const chunk of this.chatService.streamReply(history, chunks)) {
+      const reply = await this.chatService.streamReply(history, chunks);
+      for await (const chunk of reply) {
         fullText += chunk;
         res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
       }
+
+      if (!fullText.trim()) {
+        await this.chatService.escalate(conversation.id, 'empty completion from model');
+        await this.chatService.recordBotMessage(conversation.id, ESCALATION_MESSAGE);
+        res.write(`data: ${JSON.stringify({ text: ESCALATION_MESSAGE })}\n\n`);
+        res.write(`event: escalate\ndata: ${JSON.stringify({})}\n\n`);
+        res.write(`event: end\ndata: ${JSON.stringify({})}\n\n`);
+        return;
+      }
+
       await this.chatService.recordBotMessage(conversation.id, fullText, chunks);
       res.write(`event: end\ndata: ${JSON.stringify({})}\n\n`);
     } catch (err) {

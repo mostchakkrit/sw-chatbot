@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ChatEventsService } from '../../chat/chat-events.service';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chatEvents: ChatEventsService,
+  ) {}
 
   async list(status?: string) {
     return this.prisma.conversation.findMany({
@@ -32,8 +36,13 @@ export class ConversationsService {
     const conversation = await this.prisma.conversation.findUnique({ where: { id } });
     if (!conversation) throw new NotFoundException('conversation not found');
 
-    await this.prisma.message.create({
+    const message = await this.prisma.message.create({
       data: { conversationId: id, sender: 'admin', content },
+    });
+    this.chatEvents.publish(id, {
+      sender: 'admin',
+      content,
+      createdAt: message.createdAt.toISOString(),
     });
 
     await this.prisma.conversation.update({

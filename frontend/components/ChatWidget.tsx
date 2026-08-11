@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MessageCircle, UserRoundCheck, X } from "lucide-react";
 import { parseSseStream } from "@/lib/sse";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 interface ChatMessage {
-  sender: "customer" | "bot";
+  sender: "customer" | "bot" | "admin";
   text: string;
 }
+
+const CONVERSATION_ID_KEY = "chatbot-demo-conversation-id";
 
 function getCustomerIdentifier(): string {
   const key = "chatbot-demo-customer-id";
@@ -20,18 +23,66 @@ function getCustomerIdentifier(): string {
   return id;
 }
 
-export default function ChatWidget() {
-  const [open, setOpen] = useState(false);
+interface ChatWidgetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export default function ChatWidget({ open, onOpenChange }: ChatWidgetProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [escalated, setEscalated] = useState(false);
   const conversationId = useRef<string | undefined>(undefined);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, open]);
+
+  useEffect(() => {
+    return () => eventSourceRef.current?.close();
+  }, []);
+
+  useEffect(() => {
+    const storedId = window.localStorage.getItem(CONVERSATION_ID_KEY);
+    if (!storedId) return;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/chat/${storedId}/history?customerIdentifier=${encodeURIComponent(getCustomerIdentifier())}`,
+        );
+        if (!res.ok) {
+          window.localStorage.removeItem(CONVERSATION_ID_KEY);
+          return;
+        }
+        const data = (await res.json()) as {
+          conversationId: string;
+          status: string;
+          messages: { sender: "customer" | "bot" | "admin"; content: string }[];
+        };
+        conversationId.current = data.conversationId;
+        setMessages(data.messages.map((m) => ({ sender: m.sender, text: m.content })));
+        setEscalated(data.status === "escalated");
+        subscribeToAdminReplies(data.conversationId);
+      } catch {
+        // ignore — customer just starts a fresh conversation
+      }
+    })();
+  }, []);
+
+  function subscribeToAdminReplies(id: string) {
+    if (eventSourceRef.current) return;
+    const es = new EventSource(`${API_URL}/chat/${id}/stream`);
+    es.addEventListener("admin-message", (e) => {
+      const data = JSON.parse((e as MessageEvent).data) as { content: string };
+      setMessages((prev) => [...prev, { sender: "admin", text: data.content }]);
+      setEscalated(false);
+    });
+    eventSourceRef.current = es;
+  }
 
   async function sendMessage() {
     const text = input.trim();
@@ -59,7 +110,10 @@ export default function ChatWidget() {
 
       for await (const evt of parseSseStream(res.body)) {
         if (evt.event === "start") {
-          conversationId.current = JSON.parse(evt.data).conversationId;
+          const id = JSON.parse(evt.data).conversationId as string;
+          conversationId.current = id;
+          window.localStorage.setItem(CONVERSATION_ID_KEY, id);
+          subscribeToAdminReplies(id);
         } else if (evt.event === "escalate") {
           setEscalated(true);
         } else if (evt.event === "error") {
@@ -98,17 +152,17 @@ export default function ChatWidget() {
             </div>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
               className="btn btn-circle btn-sm btn-ghost text-primary-content"
               aria-label="ปิดแชท"
             >
-              ✕
+              <X size={16} />
             </button>
           </div>
 
           {escalated && (
             <div className="badge badge-accent m-2 self-center gap-1 py-3">
-              🙋 กำลังส่งต่อให้เจ้าหน้าที่
+              <UserRoundCheck size={14} /> กำลังส่งต่อให้เจ้าหน้าที่
             </div>
           )}
 
@@ -120,9 +174,16 @@ export default function ChatWidget() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={`chat ${m.sender === "customer" ? "chat-end" : "chat-start"}`}>
+                {m.sender === "admin" && (
+                  <div className="chat-header text-xs text-base-content/50">เจ้าหน้าที่</div>
+                )}
                 <div
                   className={`chat-bubble ${
-                    m.sender === "customer" ? "chat-bubble-primary" : "bg-[var(--flip7-cream)] text-base-content"
+                    m.sender === "customer"
+                      ? "chat-bubble-primary"
+                      : m.sender === "admin"
+                        ? "chat-bubble-accent"
+                        : "bg-[var(--flip7-cream)] text-base-content"
                   }`}
                 >
                   {m.text || (isStreaming && i === messages.length - 1 ? "…" : "")}
@@ -160,12 +221,12 @@ export default function ChatWidget() {
 
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="btn btn-circle btn-primary btn-lg text-2xl"
+        onClick={() => onOpenChange(!open)}
+        className="btn btn-circle btn-primary btn-lg"
         style={{ boxShadow: "var(--flip7-shadow-teal-glow)" }}
         aria-label={open ? "ปิดแชท" : "เปิดแชท"}
       >
-        {open ? "✕" : "💬"}
+        {open ? <X size={24} /> : <MessageCircle size={24} />}
       </button>
     </div>
   );

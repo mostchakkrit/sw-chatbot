@@ -1,17 +1,32 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 const TOKEN_KEY = "chatbot-demo-admin-token";
+const USER_KEY = "chatbot-demo-admin-user";
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+}
 
 export function getAdminToken(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
-export function setAdminToken(token: string) {
+export function getAdminUser(): AdminUser | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(USER_KEY);
+  return raw ? (JSON.parse(raw) as AdminUser) : null;
+}
+
+export function setAdminToken(token: string, user?: AdminUser) {
   window.localStorage.setItem(TOKEN_KEY, token);
+  if (user) window.localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export function clearAdminToken() {
   window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(USER_KEY);
 }
 
 export class AdminApiError extends Error {
@@ -102,4 +117,60 @@ export function replyToConversation(id: string, content: string): Promise<Conver
     method: "POST",
     body: JSON.stringify({ content }),
   });
+}
+
+export interface Faq {
+  id: string;
+  question: string | null;
+  content: string;
+  category: string | null;
+  updatedAt: string;
+}
+
+export interface FaqInput {
+  question?: string | null;
+  content: string;
+  category?: string | null;
+}
+
+export function listFaqs(): Promise<Faq[]> {
+  return adminFetch(`/admin/faqs`);
+}
+
+export function createFaq(input: FaqInput): Promise<Faq> {
+  return adminFetch(`/admin/faqs`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateFaq(id: string, input: Partial<FaqInput>): Promise<Faq> {
+  return adminFetch(`/admin/faqs/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFaq(id: string): Promise<void> {
+  return adminFetch(`/admin/faqs/${id}`, { method: "DELETE" });
+}
+
+export interface AdminStats {
+  totals: {
+    conversations: number;
+    messages: number;
+    botHandling: number;
+    escalated: number;
+    resolved: number;
+  };
+  last24h: {
+    conversations: number;
+    previousConversations: number;
+  };
+  statusBreakdown: { status: string; count: number; percent: number }[];
+  dailyConversations: { date: string; count: number }[];
+}
+
+export function getStats(): Promise<AdminStats> {
+  return adminFetch(`/admin/stats`);
 }

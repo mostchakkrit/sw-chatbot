@@ -5,7 +5,8 @@ import { GroqService, ChatTurn } from '../groq/groq.service';
 import { KnowledgeBaseService, RetrievedChunk } from '../knowledge-base/knowledge-base.service';
 
 const SIMILARITY_DISTANCE_THRESHOLD = 0.75;
-const TOP_K = 3;
+const TOP_K = 5;
+const CONFIDENT_MATCH_DISTANCE = 0.1;
 
 const SYSTEM_PROMPT_TEMPLATE = (context: string) => `คุณเป็นผู้ช่วยฝ่ายบริการลูกค้าของร้านค้าที่ขายหูฟังไร้สาย
 ตอบคำถามลูกค้าโดยอ้างอิงจากข้อมูลต่อไปนี้เท่านั้น ห้ามเดาหรือแต่งข้อมูลเพิ่มเอง
@@ -33,6 +34,25 @@ export class ChatService {
     return this.prisma.conversation.create({ data: { customerIdentifier } });
   }
 
+  async getHistory(conversationId: string, customerIdentifier: string) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, customerIdentifier },
+      include: {
+        messages: {
+          where: { sender: { in: ['customer', 'bot', 'admin'] } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!conversation) return null;
+
+    return {
+      conversationId: conversation.id,
+      status: conversation.status,
+      messages: conversation.messages.map((m) => ({ sender: m.sender, content: m.content })),
+    };
+  }
+
   async recordCustomerMessage(conversationId: string, content: string) {
     return this.prisma.message.create({
       data: { conversationId, sender: 'customer', content },
@@ -52,10 +72,11 @@ export class ChatService {
 
   async buildHistory(conversationId: string): Promise<ChatTurn[]> {
     const messages = await this.prisma.message.findMany({
-      where: { conversationId, sender: { in: ['customer', 'bot'] } },
-      orderBy: { createdAt: 'asc' },
+      where: { conversationId, sender: { in: ['customer', 'bot'] }, content: { not: '' } },
+      orderBy: { createdAt: 'desc' },
       take: 20,
     });
+    messages.reverse();
 
     return messages.map((m) => ({
       role: m.sender === 'customer' ? 'user' : 'model',
@@ -64,8 +85,15 @@ export class ChatService {
   }
 
   async retrieveContext(question: string): Promise<{ chunks: RetrievedChunk[]; sufficient: boolean }> {
-    const chunks = await this.knowledgeBase.search(question, TOP_K);
-    const sufficient = chunks.length > 0 && chunks[0].distance <= SIMILARITY_DISTANCE_THRESHOLD;
+    const allChunks = await this.knowledgeBase.search(question, TOP_K);
+    const sufficient = allChunks.length > 0 && allChunks[0].distance <= SIMILARITY_DISTANCE_THRESHOLD;
+
+    // A near-exact top match (e.g. the customer's wording closely mirrors a stored FAQ
+    // question) is diluted by weaker, unrelated chunks otherwise included via TOP_K —
+    // that noise can lead the model to answer from the wrong chunk. When confident, use
+    // only the top match.
+    const chunks = allChunks.length > 0 && allChunks[0].distance <= CONFIDENT_MATCH_DISTANCE ? [allChunks[0]] : allChunks;
+
     return { chunks, sufficient };
   }
 
@@ -79,8 +107,10 @@ export class ChatService {
     });
   }
 
-  streamReply(history: ChatTurn[], contextChunks: RetrievedChunk[]) {
-    const context = contextChunks.map((c, i) => `${i + 1}. ${c.content}`).join('\n');
+  async streamReply(history: ChatTurn[], contextChunks: RetrievedChunk[]) {
+    const context = contextChunks
+      .map((c, i) => (c.question ? `${i + 1}. คำถาม: ${c.question}\nคำตอบ: ${c.content}` : `${i + 1}. ${c.content}`))
+      .join('\n');
     return this.groq.streamReply(history, SYSTEM_PROMPT_TEMPLATE(context));
   }
 }
