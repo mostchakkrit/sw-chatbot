@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, UserRoundCheck, X } from "lucide-react";
-import { parseSseStream } from "@/lib/sse";
+import { parseSseStream, parseSseText } from "@/lib/sse";
 
 const API_URL = "/api";
 
@@ -106,9 +106,9 @@ export default function ChatWidget({ open, onOpenChange }: ChatWidgetProps) {
         }),
       });
 
-      if (!res.body) throw new Error("No response body");
+      const events = res.body ? parseSseStream(res.body) : parseSseText(await res.text());
 
-      for await (const evt of parseSseStream(res.body)) {
+      for await (const evt of events) {
         if (evt.event === "start") {
           const id = JSON.parse(evt.data).conversationId as string;
           conversationId.current = id;
