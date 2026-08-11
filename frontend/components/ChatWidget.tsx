@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MessageCircle, UserRoundCheck, X } from "lucide-react";
 import { parseSseStream } from "@/lib/sse";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = "/api";
 
 interface ChatMessage {
   sender: "customer" | "bot" | "admin";

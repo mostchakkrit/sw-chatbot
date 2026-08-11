@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = "/api";
 const TOKEN_KEY = "chatbot-demo-admin-token";
 const USER_KEY = "chatbot-demo-admin-user";
 
