@@ -1,0 +1,3 @@
+13-239-164-244.sslip.io {
+	reverse_proxy frontend:3000
+}
