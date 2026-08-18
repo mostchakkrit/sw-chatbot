@@ -10,10 +10,12 @@ export interface ChatTurn {
 @Injectable()
 export class GroqService {
   private readonly client: Groq;
-  private readonly chatModel = 'llama-3.3-70b-versatile';
+  private readonly chatModel: string;
 
   constructor(configService: ConfigService) {
     this.client = new Groq({ apiKey: configService.get<string>('GROQ_API_KEY') });
+    // llama-3.3-70b-versatile to openai/gpt-oss-20b
+    this.chatModel = configService.get<string>('GROQ_MODEL') ?? 'openai/gpt-oss-20b';
   }
 
   async *streamReply(history: ChatTurn[], systemPrompt?: string): AsyncGenerator<string> {
