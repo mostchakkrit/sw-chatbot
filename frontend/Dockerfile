@@ -18,4 +18,7 @@ COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
 ENV PORT=3000
-CMD ["node", "server.js"]
+# Next.js standalone server.js binds to process.env.HOSTNAME. Docker/Railway
+# inject HOSTNAME as the container id, which often does not resolve inside the
+# container (getaddrinfo ENOTFOUND), crashing the server at boot. Force 0.0.0.0.
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node server.js"]
